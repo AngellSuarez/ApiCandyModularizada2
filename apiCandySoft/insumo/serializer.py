@@ -19,7 +19,11 @@ class MarcaSerializer(serializers.ModelSerializer):
 class InsumoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Insumo;
-        fields = '__all__';
+        fields = 'id, nombre, stock, marca_id, estado, marca_nombre'.split(', ');
+    marca_nombre = serializers.SerializerMethodField();
+        
+    def get_marca_nombre(self, obj):
+        return obj.marca_id.nombre if obj.marca_id else None;
         
     def validate_nombre(self,nombre):
         if not nombre:

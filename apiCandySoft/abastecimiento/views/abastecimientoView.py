@@ -119,3 +119,14 @@ class AbastecimientoViewSet(viewsets.ModelViewSet):
             'mensaje': f'Se agregaron {len(insumos_creados)} insumos exitosamente',
             'insumos_creados': insumos_creados
         })
+        
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        for insumo_abast in instance.insumoabastecimiento_set.all():
+            if insumo_abast.estado == 'Sin usar':
+                insumo = insumo_abast.insumo_id
+                insumo.stock += insumo_abast.cantidad
+                insumo.save()
+            insumo_abast.delete()
+
+        instance.delete()

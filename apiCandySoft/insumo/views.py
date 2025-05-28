@@ -16,5 +16,15 @@ class MarcaViewSet(viewsets.ModelViewSet):
 
 class InsumoViewSet(viewsets.ModelViewSet):
     queryset = Insumo.objects.all()
-    serializer_class = InsumoSerializer;
+    serializer_class = InsumoSerializer
     permission_classes = [AllowAny]
+
+    @action(detail=False, methods=['get'])
+    def disponibles(self, request):
+        """
+        Retorna todos los insumos que NO están inactivos ni agotados.
+        Es decir: solo los que están en estado 'Activo' o 'Bajo'
+        """
+        insumos_disponibles = self.queryset.filter(estado__in=['Activo', 'Bajo'])
+        serializer = self.get_serializer(insumos_disponibles, many=True)
+        return Response(serializer.data)
