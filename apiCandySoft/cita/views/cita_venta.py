@@ -9,6 +9,8 @@ from ..serializers.cita_venta import CitaVentaSerializer
 from usuario.models.cliente import Cliente
 from usuario.models.manicurista import Manicurista
 from collections import defaultdict
+from datetime import datetime
+from django.utils.timezone import now
 import calendar
 
 # from utils.email_utils import enviar_correo
@@ -122,23 +124,39 @@ Gracias por su comprensión.
 
     @action(detail=True, methods=['patch'])
     def cambiar_estado(self, request, pk=None):
-        cita_venta = self.get_object()
-        estado_pendiente = EstadoCita.objects.get(Estado='Pendiente')
-        estado_terminada = EstadoCita.objects.get(Estado='Terminada')
-        estado_reprogramada = EstadoCita.objects.get(Estado='Re programada')
+        try:
+            cita_venta = self.get_object()
+            print("estado de la instancia ",cita_venta.estado_id.id)
+    
+            estado_pendiente = EstadoCita.objects.get(Estado='Pendiente')
+            print("estado pendiene en la db ",estado_pendiente.id)
+            estado_en_proceso = EstadoCita.objects.get(Estado='En Proceso')
+            print("Estado en proceso ",estado_en_proceso.id)
+            estado_terminada = EstadoCita.objects.get(Estado='Terminada')
+            print("Estado terminado ",estado_terminada.id)
+    
+            if cita_venta.estado_id.id == estado_pendiente.id:
+                nuevo_estado = estado_en_proceso
+            elif cita_venta.estado_id.id == estado_en_proceso.id:
+                nuevo_estado = estado_terminada
+            else:
+                return Response({
+                    "message": "La cita no está en un estado que permita avanzar (debe ser 'Pendiente' o 'En proceso')."
+                }, status=status.HTTP_400_BAD_REQUEST)
+    
+            cita_venta.estado_id = nuevo_estado
+            cita_venta.save()
+            serializer = self.get_serializer(cita_venta)
+            return Response({
+                "message": f"Estado de la cita de venta cambiado a '{nuevo_estado.Estado}'",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
 
-        if cita_venta.estado_id == estado_pendiente:
-            nuevo_estado = estado_terminada
-        else:
-            nuevo_estado = estado_reprogramada
+        except EstadoCita.DoesNotExist as e:
+            return Response({"error": f"Estado no encontrado: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"Error al cambiar el estado de la cita: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        cita_venta.estado_id = nuevo_estado
-        cita_venta.save()
-        serializer = self.get_serializer(cita_venta)
-        return Response({
-            "message": f"Estado de la cita de venta cambiado a {nuevo_estado.Estado}",
-            "data": serializer.data
-        })
 
     @action(detail=False, methods=['get'], url_path='ganancia-semanal')
     def ganancia_semanal(self, request):
@@ -297,6 +315,53 @@ Gracias por su comprensión.
             return Response({"error":"No existe el manicurista"},status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error":   str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+    @action(detail=False, methods=['post'], url_path='venta-directa')
+    def crear_venta_directa(self, request):
+        try:
+            data = request.data.copy()
+
+            estado_terminada = EstadoCita.objects.get(Estado='Terminada')
+
+            data['estado_id'] = estado_terminada.id
+
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            cita = serializer.save()
+
+            cliente = Cliente.objects.get(pk=cita.cliente_id)
+            manicurista = Manicurista.objects.get(pk=cita.manicurista_id)
+
+            return Response({
+                "message": "Cita creada con estado 'Terminada'.",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+
+        except EstadoCita.DoesNotExist:
+            return Response({"error": "El estado 'Terminada' no existe."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"Error al crear la cita terminada: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-            
-            
+    @action(detail=False, methods=['get'], url_path='en-proceso')
+    def citas_en_proceso(self, request):
+        try:
+            estado_en_proceso = EstadoCita.objects.get(Estado='En proceso')
+
+            citas = CitaVenta.objects.filter(estado_id=estado_en_proceso.id)
+
+            serializer = self.get_serializer(citas, many=True)
+
+            return Response({
+                "citas_en_proceso": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        except EstadoCita.DoesNotExist:
+            return Response({"error": "El estado 'En proceso' no existe."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"Error al obtener las citas en proceso: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
